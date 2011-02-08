@@ -211,7 +211,7 @@ sub _mech {
 
 sub _username {
     my ($self) = @_;
-    return $self->{name};
+    return $self->{user};
 }
 
 sub _password {
