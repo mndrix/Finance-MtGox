@@ -7,7 +7,10 @@ license  'mit';
 
 build_requires 'Test::More';
 
+requires 'JSON::Any' => 1.25;
+requires 'WWW::Mechanize' => 1.66;
+requires 'URI' => 1.58;
+
 auto_install;
 
 WriteAll;
-

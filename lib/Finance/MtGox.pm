@@ -2,10 +2,14 @@ package Finance::MtGox;
 
 use warnings;
 use strict;
+use Carp qw( croak );
+use JSON::Any;
+use WWW::Mechanize;
+use URI;
 
 =head1 NAME
 
-Finance::MtGox - The great new Finance::MtGox!
+Finance::MtGox - interact with the MtGox API
 
 =head1 VERSION
 
@@ -18,35 +22,201 @@ our $VERSION = '0.01';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
+  use Finance::MtGox;
+  my $mtgox = Finance::MtGox->new({
+    name     => 'username',
+    password => 'secret',
+  );
 
-Perhaps a little code snippet.
+  # unauthenticated API calls
+  my $depth = $mtgox->call('getDepth');
 
-    use Finance::MtGox;
+  # authenticatade API calls
+  my $funds = $mtgox->call_auth('getFunds');
 
-    my $foo = Finance::MtGox->new();
-    ...
+  # convenience methods built on the core API
+  my ( $btcs, $usds ) = $mtgox->balances;
+  my $rate = $mtgox->clearing_rate_ask( 200, 'BTC' );
+  $rate    = $mtgox->clearing_rate_bid(  42, 'USD' );
 
-=head1 EXPORT
+=head1 BASIC METHODS
 
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
+=head2 new
 
-=head1 SUBROUTINES/METHODS
-
-=head2 function1
+Create a new C<Finance::MtGox> object with your MtGox credentials provided
+in the C<name> and C<password> arguments.
 
 =cut
 
-sub function1 {
+sub new {
+    my ( $class, $args ) = @_;
+    my $user = $args->{user};
+    croak "Must provide a user argument" if not defined $user;
+    my $pass = $args->{password};
+    croak "Must provide a password argument" if not defined $pass;
+
+    $args->{json} = JSON::Any->new;
+    $args->{mech} = WWW::Mechanize->new;
+    return bless $args, $class;
 }
 
-=head2 function2
+=head2 call($name)
+
+Run the API call named C<$name>
 
 =cut
 
-sub function2 {
+sub call {
+    my ( $self, $name ) = @_;
+    croak "You must provide an API method" if not $name;
+    my $uri    = URI->new("http://mtgox.com/code/data/$name.php");
+    my $mech   = $self->_mech->get($uri);
+    return $self->_decode;
 }
+
+=head2 call_auth( $name, $args )
+
+Run the API call named C<$name> with arguments provided by the hashref
+C<$args>.
+
+=cut
+
+sub call_auth {
+    my ( $self, $name, $args ) = @_;
+    croak "You must provide an API name" if not $name;
+    $args ||= {};
+    my $uri = URI->new("https://mtgox.com/code/$name.php");
+    $self->_mech->post( $uri, {
+        %$args,
+        name => $self->_username,
+        pass => $self->_password,
+    });
+    return $self->_decode;
+}
+
+=head2 CONVENIENCE METHODS
+
+=head2 balances
+
+Returns a list with current BTC and USD account balances,
+respectively.
+
+=cut
+
+sub balances {
+    my ($self) = @_;
+    my $result = $self->call('getFunds');
+    return ( $result->{btcs}, $result->{usds} );
+}
+
+=head2 clearing_rate( $side, $amount, $currency )
+
+Traverse the current "asks" or "bids" (C<$side>) on the order book until the
+given amount of currency has been consumed.
+Returns the resulting market clearing rate.
+This method is useful when trying to determine how much you'd have to pay
+to purchase $40 worth of BTC:
+
+  my $rate = $mtgox->clearing_rate( 'asks', 40, 'USD' );
+
+Similar code for determining the rate to sell 40 BTC:
+
+  my $rate = $mtgox->clearing_rate( 'bids', 40, 'BTC' );
+
+Dark pool orders are not considered since they're not visible on the order
+book.
+
+=cut
+
+sub clearing_rate {
+    my ( $self, $side, $amount, $currency ) = @_;
+    croak "You must specify a side"  if not defined $side;
+    $side = lc $side;
+    croak "Invalid side: $side" if not $side =~ /^(asks|bids)$/;
+    croak "You must specify an amount"  if not defined $amount;
+    croak "You must specify a currency" if not defined $currency;
+    $currency = uc $currency;
+
+    # make sure we traverse offers in the right order
+    my @offers =
+        sort { $a->[0] <=> $b->[0] }
+        @{ $self->call('getDepth')->{$side} };
+    @offers = reverse @offers if $side eq 'bids';
+
+    # how much will we pay to purchase the desired quantity of BTC?
+    my $bought_btc = 0;
+    my $paid_usd   = 0;
+    for my $offer (@offers) {
+        my ( $price_usd, $volume_btc ) = @$offer;
+        my $trade_btc = $currency eq 'BTC' ? $amount-$bought_btc
+                      : $currency eq 'USD' ? ($amount-$paid_usd)/$price_usd
+                      : croak "Invalid currency: $currency"
+                      ;
+        $trade_btc = $volume_btc if $volume_btc < $trade_btc;
+        $paid_usd   += $trade_btc * $price_usd;
+        $bought_btc += $trade_btc;
+        last if $currency eq 'BTC' && $bought_btc >= $amount;
+        last if $currency eq 'USD' && $paid_usd   >= $amount;
+    }
+
+    return $paid_usd / $bought_btc;
+}
+
+=head2 market_price
+
+Returns a volume-weighted USD price per BTC based on MtGox trades within
+the last 24 hours.  Returns C<undef> if there have been no trades in the
+last 24 hours.
+
+=cut
+
+sub market_price {
+    my ($self) = @_;
+    my $trades    = $self->call('getTrades');
+    my $threshold = time - 86400;           # last 24 hours
+
+    my $trade_count      = 0;
+    my $trade_volume_btc = 0;
+    my $trade_volume_usd = 0;
+    for my $trade (@$trades) {
+        next if $trade->{date} < $threshold;
+        $trade_count++;
+        $trade_volume_btc += $trade->{amount};
+        $trade_volume_usd += $trade->{price} * $trade->{amount};
+    }
+
+    return if $trade_count == 0;
+    return if $trade_volume_btc == 0;
+    return $trade_volume_usd / $trade_volume_btc;
+}
+
+### Private methods below here
+
+sub _decode {
+    my ($self) = @_;
+    return $self->_json->decode( $self->_mech->content );
+}
+
+sub _json {
+    my ($self) = @_;
+    return $self->{json};
+}
+
+sub _mech {
+    my ($self) = @_;
+    return $self->{mech};
+}
+
+sub _username {
+    my ($self) = @_;
+    return $self->{name};
+}
+
+sub _password {
+    my ($self) = @_;
+    return $self->{password};
+}
+
 
 =head1 AUTHOR
 
@@ -54,12 +224,8 @@ Michael Hendricks, C<< <michael at ndrix.org> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-finance-mtgox at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Finance-MtGox>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
+Please report any bugs or feature requests through
+the web interface at L<https://github.com/mndrix/Finance-MtGox/issues>.
 
 =head1 SUPPORT
 
@@ -71,10 +237,6 @@ You can find documentation for this module with the perldoc command.
 You can also look for information at:
 
 =over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Finance-MtGox>
 
 =item * AnnoCPAN: Annotated CPAN documentation
 
