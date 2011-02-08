@@ -24,27 +24,27 @@ our $VERSION = '0.01';
 
   use Finance::MtGox;
   my $mtgox = Finance::MtGox->new({
-    name     => 'username',
+    user     => 'username',
     password => 'secret',
   );
 
   # unauthenticated API calls
   my $depth = $mtgox->call('getDepth');
 
-  # authenticatade API calls
+  # authenticated API calls
   my $funds = $mtgox->call_auth('getFunds');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
-  my $rate = $mtgox->clearing_rate_ask( 200, 'BTC' );
-  $rate    = $mtgox->clearing_rate_bid(  42, 'USD' );
+  my $rate = $mtgox->clearing_rate( 'asks', 200, 'BTC' );
+  $rate    = $mtgox->clearing_rate( 'bids',  42, 'USD' );
 
 =head1 BASIC METHODS
 
 =head2 new
 
 Create a new C<Finance::MtGox> object with your MtGox credentials provided
-in the C<name> and C<password> arguments.
+in the C<user> and C<password> arguments.
 
 =cut
 
@@ -62,7 +62,8 @@ sub new {
 
 =head2 call($name)
 
-Run the API call named C<$name>
+Run the API call named C<$name>.  Returns a Perl data structure
+representing the JSON returned from MtGox.
 
 =cut
 
@@ -77,7 +78,8 @@ sub call {
 =head2 call_auth( $name, $args )
 
 Run the API call named C<$name> with arguments provided by the hashref
-C<$args>.
+C<$args>. Returns a Perl data structure representing the JSON returned
+from MtGox
 
 =cut
 
@@ -94,7 +96,7 @@ sub call_auth {
     return $self->_decode;
 }
 
-=head2 CONVENIENCE METHODS
+=head1 CONVENIENCE METHODS
 
 =head2 balances
 
