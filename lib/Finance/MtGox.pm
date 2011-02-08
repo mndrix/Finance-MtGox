@@ -107,7 +107,7 @@ respectively.
 
 sub balances {
     my ($self) = @_;
-    my $result = $self->call('getFunds');
+    my $result = $self->call_auth('getFunds');
     return ( $result->{btcs}, $result->{usds} );
 }
 
