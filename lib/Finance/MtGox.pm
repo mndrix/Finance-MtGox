@@ -70,7 +70,7 @@ representing the JSON returned from MtGox.
 sub call {
     my ( $self, $name ) = @_;
     croak "You must provide an API method" if not $name;
-    my $uri    = URI->new("http://mtgox.com/code/data/$name.php");
+    my $uri    = URI->new("https://mtgox.com/code/data/$name.php");
     my $mech   = $self->_mech->get($uri);
     return $self->_decode;
 }
