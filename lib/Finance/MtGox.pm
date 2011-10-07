@@ -70,8 +70,8 @@ representing the JSON returned from MtGox.
 sub call {
     my ( $self, $name ) = @_;
     croak "You must provide an API method" if not $name;
-    my $uri    = $self->_build_api_method_uri( $name, 'data' );
-    my $mech   = $self->_mech->get($uri);
+    my $req = $self->_build_api_method_request( 'GET', $name, 'data' );
+    $self->_mech->request($req);
     return $self->_decode;
 }
 
@@ -87,12 +87,10 @@ sub call_auth {
     my ( $self, $name, $args ) = @_;
     croak "You must provide an API name" if not $name;
     $args ||= {};
-    my $uri = $self->_build_api_method_uri($name);
-    $self->_mech->post( $uri, {
-        %$args,
-        name => $self->_username,
-        pass => $self->_password,
-    });
+    $args->{name} = $self->_username;
+    $args->{pass} = $self->_password;
+    my $req = $self->_build_api_method_request( 'POST', $name, '', $args );
+    $self->_mech->request($req);
     return $self->_decode;
 }
 
@@ -224,6 +222,28 @@ sub _build_api_method_uri {
     my ( $self, $name, $prefix ) = @_;
     $prefix = $prefix ? "$prefix/" : '';
     return URI->new("https://mtgox.com/code/$prefix$name.php");
+}
+
+# builds an HTTP::Request object for making an API call
+sub _build_api_method_request {
+    my ( $self, $method, $name, $prefix, $params ) = @_;
+    $method = uc $method;
+    $params ||= {};
+
+    my $uri = $self->_build_api_method_uri( $name, $prefix );
+    my $req = HTTP::Request->new( $method, $uri );
+    if ( keys %$params ) {
+        $uri->query_form($params);
+        if ( $method eq 'POST' ) {
+
+            # move params to the request body
+            my $query = $uri->query;
+            $req->header( 'Content-Type' => 'application/x-www-form-urlencoded' );
+            $req->content($query);
+            $uri->query(undef);
+        }
+    }
+    return $req;
 }
 
 =head1 AUTHOR
