@@ -50,6 +50,9 @@ our $VERSION = '0.01';
 Create a new C<Finance::MtGox> object with your MtGox credentials provided
 in the C<user> and C<password> arguments.
 
+You can also provide credentials with C<key> and C<secret> arguments.  This
+allows access to MtGox's newer API which has more methods.
+
 =cut
 
 sub new {
@@ -203,7 +206,8 @@ sub market_price {
 =head2 version
 
 Returns a string indicating which version of the MtGox API is being used.
-One of 'legacy' or 'v0'.
+One of 'legacy' or 'v0' (depending on which authentication was provided to
+L</new>).
 
 =cut
 
@@ -310,7 +314,7 @@ sub _sign {
 
 =head1 AUTHOR
 
-Michael Hendricks, C<< <michael at ndrix.org> >>
+Michael Hendricks, C<< <michael@ndrix.org> >>
 
 =head1 BUGS
 
