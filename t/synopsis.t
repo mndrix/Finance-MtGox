@@ -4,12 +4,13 @@ use warnings;
 use Finance::MtGox;
 use Test::More;
 
-my ( $username, $password ) = split /:/, ( $ENV{MTGOX_CREDENTIALS} || '' );
+my $username = '';
+my $password = '';
 if ( $username && $password ) {
     plan tests => 13;
 }
 else {
-    plan skip_all => "No MtGox credentials in MTGOX_CREDENTIALS environment"
+    plan skip_all => "Author only tests";
 }
 
 my $mtgox = Finance::MtGox->new({
