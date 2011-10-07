@@ -70,7 +70,7 @@ representing the JSON returned from MtGox.
 sub call {
     my ( $self, $name ) = @_;
     croak "You must provide an API method" if not $name;
-    my $uri    = URI->new("https://mtgox.com/code/data/$name.php");
+    my $uri    = $self->_build_api_method_uri( $name, 'data' );
     my $mech   = $self->_mech->get($uri);
     return $self->_decode;
 }
@@ -87,7 +87,7 @@ sub call_auth {
     my ( $self, $name, $args ) = @_;
     croak "You must provide an API name" if not $name;
     $args ||= {};
-    my $uri = URI->new("https://mtgox.com/code/$name.php");
+    my $uri = $self->_build_api_method_uri($name);
     $self->_mech->post( $uri, {
         %$args,
         name => $self->_username,
@@ -219,6 +219,12 @@ sub _password {
     return $self->{password};
 }
 
+# build a URI object for the endpoint of an API call
+sub _build_api_method_uri {
+    my ( $self, $name, $prefix ) = @_;
+    $prefix = $prefix ? "$prefix/" : '';
+    return URI->new("https://mtgox.com/code/$prefix$name.php");
+}
 
 =head1 AUTHOR
 
