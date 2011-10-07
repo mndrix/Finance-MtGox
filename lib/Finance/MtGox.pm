@@ -26,7 +26,7 @@ our $VERSION = '0.01';
   my $mtgox = Finance::MtGox->new({
     user     => 'username',
     password => 'secret',
-  );
+  });
 
   # unauthenticated API calls
   my $depth = $mtgox->call('getDepth');
