@@ -7,7 +7,10 @@ license  'mit';
 
 build_requires 'Test::More';
 
+requires 'Digest::SHA';
 requires 'JSON::Any' => 1.25;
+requires 'MIME::Base64';
+requires 'Time::HiRes';
 requires 'WWW::Mechanize' => 1.66;
 requires 'URI' => 1.58;
 

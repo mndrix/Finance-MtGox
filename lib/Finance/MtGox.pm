@@ -6,6 +6,9 @@ use Carp qw( croak );
 use JSON::Any;
 use WWW::Mechanize;
 use URI;
+use Time::HiRes qw( gettimeofday );
+use Digest::SHA qw( hmac_sha512 );
+use MIME::Base64;
 
 =head1 NAME
 
@@ -27,6 +30,7 @@ our $VERSION = '0.01';
     user     => 'username',
     password => 'secret',
   });
+  # 'key' and 'secret' authentication works too
 
   # unauthenticated API calls
   my $depth = $mtgox->call('getDepth');
@@ -50,10 +54,16 @@ in the C<user> and C<password> arguments.
 
 sub new {
     my ( $class, $args ) = @_;
-    my $user = $args->{user};
-    croak "Must provide a user argument" if not defined $user;
-    my $pass = $args->{password};
-    croak "Must provide a password argument" if not defined $pass;
+
+    if ( $args->{user} && $args->{password} ) {
+        # acceptable authentication for the legacy API
+    }
+    elsif ( $args->{key} && $args->{secret} ) {
+        # acceptable authentication for v0 API
+    }
+    else {
+        croak "You must provide either 'user' and 'password' or 'key' and 'secret' credentials";
+    }
 
     $args->{json} = JSON::Any->new;
     $args->{mech} = WWW::Mechanize->new;
@@ -190,6 +200,20 @@ sub market_price {
     return $trade_volume_usd / $trade_volume_btc;
 }
 
+=head2 version
+
+Returns a string indicating which version of the MtGox API is being used.
+One of 'legacy' or 'v0'.
+
+=cut
+
+sub version {
+    my ($self) = @_;
+    return 'legacy' if $self->_username && $self->_password;
+    return 'v0'     if $self->_key && $self->_secret;
+    die "Can't find a MtGox API version supporting these credentials";
+}
+
 ### Private methods below here
 
 sub _decode {
@@ -217,11 +241,25 @@ sub _password {
     return $self->{password};
 }
 
+sub _key {
+    my ($self) = @_;
+    return $self->{key};
+}
+
+sub _secret {
+    my ($self) = @_;
+    return $self->{secret};
+}
+
 # build a URI object for the endpoint of an API call
 sub _build_api_method_uri {
     my ( $self, $name, $prefix ) = @_;
+    my $version = $self->version eq 'legacy' ? 'code'
+                : $self->version eq 'v0'     ? 'api/0'
+                : die "Unknown version"
+                ;
     $prefix = $prefix ? "$prefix/" : '';
-    return URI->new("https://mtgox.com/code/$prefix$name.php");
+    return URI->new("https://mtgox.com/$version/$prefix$name.php");
 }
 
 # builds an HTTP::Request object for making an API call
@@ -229,6 +267,11 @@ sub _build_api_method_request {
     my ( $self, $method, $name, $prefix, $params ) = @_;
     $method = uc $method;
     $params ||= {};
+
+    # prepare for authentication
+    if ( $method eq 'POST' && $self->version ne 'legacy' ) {
+        $params->{nonce} = $self->_generate_nonce;
+    }
 
     my $uri = $self->_build_api_method_uri( $name, $prefix );
     my $req = HTTP::Request->new( $method, $uri );
@@ -241,9 +284,28 @@ sub _build_api_method_request {
             $req->header( 'Content-Type' => 'application/x-www-form-urlencoded' );
             $req->content($query);
             $uri->query(undef);
+
+            # include a signature
+            if ( $self->version ne 'legacy' ) {
+                $req->header( 'Rest-Key', $self->_key );
+                $req->header( 'Rest-Sign', $self->_sign($query) );
+            }
         }
     }
     return $req;
+}
+
+# Returns an ever-increasing nonce value
+# (Fails to increase when the system clock adjusts backwards)
+sub _generate_nonce {
+    return sprintf '%s%06s', gettimeofday()
+}
+
+# Returns a signature for the given message (using the API secret)
+sub _sign {
+    my ( $self, $message ) = @_;
+    my $secret = decode_base64( $self->_secret );
+    return encode_base64( hmac_sha512( $message, $secret ) );
 }
 
 =head1 AUTHOR
