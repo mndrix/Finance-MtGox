@@ -69,7 +69,7 @@ sub new {
     }
 
     $args->{json} = JSON::Any->new;
-    $args->{mech} = WWW::Mechanize->new;
+    $args->{mech} = WWW::Mechanize->new(stack_depth => 0);
     return bless $args, $class;
 }
 
