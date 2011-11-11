@@ -1,5 +1,10 @@
 Revision history for Finance-MtGox
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+0.02    Fri Oct 07 2011
+    - Support MtGox API version 0
+    - Make all API requests over HTTPS
+    - Add a test for Synopsis code
+    - Correct a typo in the Synopsis
 
+0.01    Tue Feb 08 2011
+    - First version
