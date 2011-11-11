@@ -12,7 +12,7 @@ use MIME::Base64;
 
 =head1 NAME
 
-Finance::MtGox - interact with the MtGox API
+Finance::MtGox - trade Bitcoin with the MtGox API
 
 =head1 VERSION
 
