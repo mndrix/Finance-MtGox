@@ -1,5 +1,8 @@
 Revision history for Finance-MtGox
 
+0.03    Fri Nov 11 16:27:07 UTC 2011
+    - Reduce memory consumption for long-running processes (Thanks shockdiode)
+
 0.02    Fri Oct 07 2011
     - Support MtGox API version 0
     - Make all API requests over HTTPS
