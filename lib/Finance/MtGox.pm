@@ -278,6 +278,11 @@ sub _build_api_method_request {
     }
 
     my $uri = $self->_build_api_method_uri( $name, $prefix );
+    if ( $method eq 'GET' ) {
+        # since March 19, 2013 no-auth requests need this hostname
+        $uri->scheme('http');
+        $uri->host('data.mtgox.com');
+    }
     my $req = HTTP::Request->new( $method, $uri );
     if ( keys %$params ) {
         $uri->query_form($params);
