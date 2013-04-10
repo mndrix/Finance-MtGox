@@ -30,13 +30,13 @@ cmp_ok( scalar @{ $depth->{bids} }, '>', 0, 'MtGox has some bid orders' );
 my $funds = $mtgox->call_auth('getFunds');
 is( ref $funds, 'HASH', 'getFunds response is a hashref');
 is( $funds->{error}, undef, 'no getFunds errors' );
-cmp_ok( $funds->{usds}, '>', 0, 'getFunds has some USD funds' );
-cmp_ok( $funds->{btcs}, '>', 0, 'getFunds has some BTC funds' );
+cmp_ok( $funds->{usds}, '>=', 0, 'getFunds has some USD funds' );
+cmp_ok( $funds->{btcs}, '>=', 0, 'getFunds has some BTC funds' );
 
 # convenience methods built on the core API
 my ( $btcs, $usds ) = $mtgox->balances;
-cmp_ok( $usds, '>', 0, 'balances() has some USD funds' );
-cmp_ok( $btcs, '>', 0, 'balances() has some BTC funds' );
+cmp_ok( $usds, '>=', 0, 'balances() has some USD funds' );
+cmp_ok( $btcs, '>=', 0, 'balances() has some BTC funds' );
 my $rate = $mtgox->clearing_rate( 'asks', 200, 'BTC' );
 cmp_ok( $rate, '>', 0, 'has a BTC ask side clearing rate' );
 $rate    = $mtgox->clearing_rate( 'bids',  42, 'USD' );
