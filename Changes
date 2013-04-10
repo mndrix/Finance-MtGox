@@ -1,5 +1,8 @@
 Revision history for Finance-MtGox
 
+0.04    Wed Apr 10 16:22:52 UTC 2013
+    - Use data.mtgox.com where necessary
+
 0.03    Fri Nov 11 16:27:07 UTC 2011
     - Reduce memory consumption for long-running processes (Thanks shockdiode)
 
