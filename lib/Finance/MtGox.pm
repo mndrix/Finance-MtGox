@@ -27,16 +27,16 @@ our $VERSION = '0.04';
 
   use Finance::MtGox;
   my $mtgox = Finance::MtGox->new({
-    user     => 'username',
-    password => 'secret',
+    key     => 'api key',
+    secret  => 'api secret',
+    currency => 'USD'
   });
-  # 'key' and 'secret' authentication works too
 
   # unauthenticated API calls
   my $depth = $mtgox->call('getDepth');
 
   # authenticated API calls
-  my $funds = $mtgox->call_auth('getFunds');
+  my $funds = $mtgox->call_auth('info');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
@@ -48,25 +48,15 @@ our $VERSION = '0.04';
 =head2 new
 
 Create a new C<Finance::MtGox> object with your MtGox credentials provided
-in the C<user> and C<password> arguments.
-
-You can also provide credentials with C<key> and C<secret> arguments.  This
-allows access to MtGox's newer API which has more methods.
+in the C<key> and C<secret> arguments and the C<currency> of your account
 
 =cut
 
 sub new {
     my ( $class, $args ) = @_;
 
-    if ( $args->{user} && $args->{password} ) {
-        # acceptable authentication for the legacy API
-    }
-    elsif ( $args->{key} && $args->{secret} ) {
-        # acceptable authentication for v0 API
-    }
-    else {
-        croak "You must provide either 'user' and 'password' or 'key' and 'secret' credentials";
-    }
+    $args->{key} && $args->{secret} && $args->{currency}
+      or croak "You must provide 'key', 'secret' credentials and a currency";
 
     $args->{json} = JSON::Any->new;
     $args->{mech} = WWW::Mechanize->new(stack_depth => 0);
@@ -100,8 +90,6 @@ sub call_auth {
     my ( $self, $name, $args ) = @_;
     croak "You must provide an API name" if not $name;
     $args ||= {};
-    $args->{name} = $self->_username;
-    $args->{pass} = $self->_password;
     my $req = $self->_build_api_method_request( 'POST', $name, '', $args );
     $self->_mech->request($req);
     return $self->_decode;
@@ -118,8 +106,8 @@ respectively.
 
 sub balances {
     my ($self) = @_;
-    my $result = $self->call_auth('getFunds');
-    return ( $result->{btcs}, $result->{usds} );
+    my $result = $self->call_auth('info');
+    return ( $result->{Wallets}{BTC}, $result->{Wallets}{$self->{currency}} );
 }
 
 =head2 clearing_rate( $side, $amount, $currency )
@@ -206,16 +194,13 @@ sub market_price {
 =head2 version
 
 Returns a string indicating which version of the MtGox API is being used.
-One of 'legacy' or 'v0' (depending on which authentication was provided to
-L</new>).
+Currently only 'v0'
 
 =cut
 
 sub version {
     my ($self) = @_;
-    return 'legacy' if $self->_username && $self->_password;
-    return 'v0'     if $self->_key && $self->_secret;
-    die "Can't find a MtGox API version supporting these credentials";
+    return 'v0';
 }
 
 ### Private methods below here
@@ -235,16 +220,6 @@ sub _mech {
     return $self->{mech};
 }
 
-sub _username {
-    my ($self) = @_;
-    return $self->{user};
-}
-
-sub _password {
-    my ($self) = @_;
-    return $self->{password};
-}
-
 sub _key {
     my ($self) = @_;
     return $self->{key};
@@ -258,8 +233,7 @@ sub _secret {
 # build a URI object for the endpoint of an API call
 sub _build_api_method_uri {
     my ( $self, $name, $prefix ) = @_;
-    my $version = $self->version eq 'legacy' ? 'code'
-                : $self->version eq 'v0'     ? 'api/0'
+    my $version = $self->version eq 'v0'     ? 'api/0'
                 : die "Unknown version"
                 ;
     $prefix = $prefix ? "$prefix/" : '';
@@ -273,7 +247,7 @@ sub _build_api_method_request {
     $params ||= {};
 
     # prepare for authentication
-    if ( $method eq 'POST' && $self->version ne 'legacy' ) {
+    if ( $method eq 'POST') {
         $params->{nonce} = $self->_generate_nonce;
     }
 
@@ -295,11 +269,9 @@ sub _build_api_method_request {
             $uri->query(undef);
 
             # include a signature
-            if ( $self->version ne 'legacy' ) {
-                $req->header( 'Rest-Key', $self->_key );
-                $req->header( 'Rest-Sign', $self->_sign($query) );
-            }
-        }
+            $req->header( 'Rest-Key', $self->_key );
+            $req->header( 'Rest-Sign', $self->_sign($query) );
+          }
     }
     return $req;
 }
