@@ -18,7 +18,6 @@ else {
 my $mtgox = Finance::MtGox->new({
     key    => $key,
     secret => $secret,
-    version => 1,
 });
 ok( $mtgox, 'Finance::MtGox object created' );
 
