@@ -34,8 +34,4 @@ is( $info->{error}, undef, 'no generic/info errors' );
 cmp_ok( $info->{return}{Wallets}{BTC}{Balance}{value}, '>=', 0, 'info has some BTC funds' );
 cmp_ok( $info->{return}{Wallets}{$currency}{Balance}{value}, '>=', 0, "info has some $currency funds" );
 
-#eval { $mtgox->balances($currency) };
-
-#eval { $mtgox->clearing_rate( 'asks', 200, 'BTC' ) };
-#eval { $mtgox->market_price };
 
