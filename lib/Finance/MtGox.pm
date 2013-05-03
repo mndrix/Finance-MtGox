@@ -261,13 +261,14 @@ sub _build_api_method_request {
 
             # move params to the request body
             my $query = $uri->query;
+            my $message = $version == 2 ? "$name\0$query" : $query;
             $req->header( 'Content-Type' => 'application/x-www-form-urlencoded' );
             $req->content($query);
             $uri->query(undef);
 
             # include a signature
             $req->header( 'Rest-Key', $self->_key );
-            $req->header( 'Rest-Sign', $self->_sign($query) );
+            $req->header( 'Rest-Sign', $self->_sign($message) );
           }
     }
     return $req;
