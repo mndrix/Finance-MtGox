@@ -28,15 +28,14 @@ our $VERSION = '0.04';
   use Finance::MtGox;
   my $mtgox = Finance::MtGox->new({
     key     => 'api key',
-    secret  => 'api secret',
-    currency => 'USD'
+    secret  => 'api secret'
   });
 
   # unauthenticated API calls
-  my $depth = $mtgox->call('getDepth');
+  my $depth = $mtgox->call(0, 'getDepth');
 
   # authenticated API calls
-  my $funds = $mtgox->call_auth('info');
+  my $funds = $mtgox->call_auth(0, 'info');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
@@ -48,49 +47,56 @@ our $VERSION = '0.04';
 =head2 new
 
 Create a new C<Finance::MtGox> object with your MtGox credentials provided
-in the C<key> and C<secret> arguments and the C<currency> of your account
+in the C<key> and C<secret> arguments.
 
 =cut
 
 sub new {
     my ( $class, $args ) = @_;
 
-    $args->{key} && $args->{secret} && $args->{currency}
-      or croak "You must provide 'key', 'secret' credentials and a currency";
+    $args->{key} && $args->{secret}
+      or croak "You must provide 'key' and 'secret' credentials.";
 
     $args->{json} = JSON::Any->new;
     $args->{mech} = WWW::Mechanize->new(stack_depth => 0);
+
     return bless $args, $class;
 }
 
-=head2 call($name)
+=head2 call( $version, $name )
 
-Run the API call named C<$name>.  Returns a Perl data structure
+Run the API version C<$version> call named C<$name>.  Returns a Perl data structure
 representing the JSON returned from MtGox.
 
 =cut
 
 sub call {
-    my ( $self, $name ) = @_;
+    my ( $self, $version, $name) = @_;
+
     croak "You must provide an API method" if not $name;
-    my $req = $self->_build_api_method_request( 'GET', $name, 'data' );
+
+    my $req = $self->_build_api_method_request( 'GET',
+                                                $version,
+                                                $name,
+                                                $version == 0  ? 'data': '' );
     $self->_mech->request($req);
     return $self->_decode;
 }
 
-=head2 call_auth( $name, $args )
+=head2 call_auth( $version, $name, $args )
 
-Run the API call named C<$name> with arguments provided by the hashref
+Run the API version C<$version> call named C<$name> with arguments provided by the hashref
 C<$args>. Returns a Perl data structure representing the JSON returned
 from MtGox
 
 =cut
 
 sub call_auth {
-    my ( $self, $name, $args ) = @_;
-    croak "You must provide an API name" if not $name;
+    my ( $self, $version, $name, $args ) = @_;
+
+    croak "You must provide an API method" if not $name;
     $args ||= {};
-    my $req = $self->_build_api_method_request( 'POST', $name, '', $args );
+    my $req = $self->_build_api_method_request( 'POST', $version, $name, '', $args );
     $self->_mech->request($req);
     return $self->_decode;
 }
@@ -99,15 +105,16 @@ sub call_auth {
 
 =head2 balances
 
-Returns a list with current BTC and USD account balances,
+Returns a list with current BTC and C<$currency> account balances,
 respectively.
 
 =cut
 
 sub balances {
-    my ($self) = @_;
-    my $result = $self->call_auth('info');
-    return ( $result->{Wallets}{BTC}, $result->{Wallets}{$self->{currency}} );
+    my ($self, $currency) = @_;
+
+    my $result = $self->call_auth(0, 'info');
+    return ( $result->{Wallets}{BTC}, $result->{Wallets}{$currency} );
 }
 
 =head2 clearing_rate( $side, $amount, $currency )
@@ -141,7 +148,7 @@ sub clearing_rate {
     # make sure we traverse offers in the right order
     my @offers =
         sort { $a->[0] <=> $b->[0] }
-        @{ $self->call('getDepth')->{$side} };
+        @{ $self->call(0, 'getDepth')->{$side} };
     @offers = reverse @offers if $side eq 'bids';
 
     # how much will we pay to purchase the desired quantity of BTC?
@@ -173,7 +180,7 @@ last 24 hours.
 
 sub market_price {
     my ($self) = @_;
-    my $trades    = $self->call('getTrades');
+    my $trades    = $self->call(0, 'getTrades');
     my $threshold = time - 86400;           # last 24 hours
 
     my $trade_count      = 0;
@@ -189,18 +196,6 @@ sub market_price {
     return if $trade_count == 0;
     return if $trade_volume_btc == 0;
     return $trade_volume_usd / $trade_volume_btc;
-}
-
-=head2 version
-
-Returns a string indicating which version of the MtGox API is being used.
-Currently only 'v0'
-
-=cut
-
-sub version {
-    my ($self) = @_;
-    return 'v0';
 }
 
 ### Private methods below here
@@ -232,17 +227,18 @@ sub _secret {
 
 # build a URI object for the endpoint of an API call
 sub _build_api_method_uri {
-    my ( $self, $name, $prefix ) = @_;
-    my $version = $self->version eq 'v0'     ? 'api/0'
-                : die "Unknown version"
-                ;
+    my ( $self, $version, $name, $prefix ) = @_;
+    my $version_url_token = "api/" . $version;
+
     $prefix = $prefix ? "$prefix/" : '';
-    return URI->new("https://mtgox.com/$version/$prefix$name.php");
+    return URI->new($version == 0 ?
+                    "https://mtgox.com/$version_url_token/$prefix$name.php"
+                    : "https://data.mtgox.com/$version_url_token/$prefix$name");
 }
 
 # builds an HTTP::Request object for making an API call
 sub _build_api_method_request {
-    my ( $self, $method, $name, $prefix, $params ) = @_;
+    my ( $self, $method, $version, $name, $prefix, $params ) = @_;
     $method = uc $method;
     $params ||= {};
 
@@ -251,12 +247,13 @@ sub _build_api_method_request {
         $params->{nonce} = $self->_generate_nonce;
     }
 
-    my $uri = $self->_build_api_method_uri( $name, $prefix );
-    if ( $method eq 'GET' ) {
+    my $uri = $self->_build_api_method_uri( $version, $name, $prefix );
+    if ( $method eq 'GET') {
         # since March 19, 2013 no-auth requests need this hostname
         $uri->scheme('http');
         $uri->host('data.mtgox.com');
     }
+
     my $req = HTTP::Request->new( $method, $uri );
     if ( keys %$params ) {
         $uri->query_form($params);

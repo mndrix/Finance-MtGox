@@ -18,27 +18,26 @@ else {
 my $mtgox = Finance::MtGox->new({
     key    => $key,
     secret => $secret,
-    currency => $currency,
 });
 ok( $mtgox, 'Finance::MtGox object created' );
 
 # unauthenticated API calls
-my $depth = $mtgox->call('getDepth');
+my $depth = $mtgox->call(0, 'getDepth');
 is( ref $depth, 'HASH', 'getDepth response is a hashref');
 is( $depth->{error}, undef, 'no getDepth errors' );
 cmp_ok( scalar @{ $depth->{asks} }, '>', 0, 'MtGox has some ask orders' );
 cmp_ok( scalar @{ $depth->{bids} }, '>', 0, 'MtGox has some bid orders' );
 
 # authenticated API calls
-my $info = $mtgox->call_auth('info');
+my $info = $mtgox->call_auth(0, 'info');
 is( ref $info, 'HASH', 'info response is a hashref');
 is( $info->{error}, undef, 'no info errors' );
 cmp_ok( $info->{Wallets}{BTC}, '>=', 0, 'info has some BTC funds' );
 cmp_ok( $info->{Wallets}{$currency}, '>=', 0, "info has some $currency funds" );
 
 # convenience methods built on the core API
-my ( $btcs, $usds ) = $mtgox->balances;
-cmp_ok( $usds, '>=', 0, 'balances() has some USD funds' );
+my ( $btcs, $other ) = $mtgox->balances($currency);
+cmp_ok( $other, '>=', 0, 'balances() has some $currency funds' );
 cmp_ok( $btcs, '>=', 0, 'balances() has some BTC funds' );
 my $rate = $mtgox->clearing_rate( 'asks', 200, 'BTC' );
 cmp_ok( $rate, '>', 0, 'has a BTC ask side clearing rate' );

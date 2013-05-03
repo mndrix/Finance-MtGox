@@ -22,3 +22,4 @@ t/pod-coverage.t
 t/pod.t
 t/synopsis.t
 t/v0.t
+t/v1.t
