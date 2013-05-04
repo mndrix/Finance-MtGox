@@ -32,10 +32,10 @@ our $VERSION = '0.04';
   });
 
   # unauthenticated API calls
-  my $depth = $mtgox->call(0, 'getDepth');
+  my $depth = $mtgox->call('getDepth');
 
   # authenticated API calls
-  my $funds = $mtgox->call_auth(0, 'info');
+  my $funds = $mtgox->call_auth('info');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
@@ -63,18 +63,18 @@ sub new {
     return bless $args, $class;
 }
 
-=head2 call( $version, $name )
+=head2 call( $name )
 
-Run the API version C<$version> call named C<$name>.  Returns a Perl data structure
+Run the API call named C<$name>.  Returns a Perl data structure
 representing the JSON returned from MtGox.
 
 =cut
 
 sub call {
-    my ( $self, $version, $name) = @_;
-
+    my ( $self, $name ) = @_;
     croak "You must provide an API method" if not $name;
 
+    my $version = $self->_version_from_name($name);
     my $req = $self->_build_api_method_request( 'GET',
                                                 $version,
                                                 $name,
@@ -83,18 +83,19 @@ sub call {
     return $self->_decode;
 }
 
-=head2 call_auth( $version, $name, $args )
+=head2 call_auth( $name, $args )
 
-Run the API version C<$version> call named C<$name> with arguments provided by the hashref
+Run the API call named C<$name> with arguments provided by the hashref
 C<$args>. Returns a Perl data structure representing the JSON returned
 from MtGox
 
 =cut
 
 sub call_auth {
-    my ( $self, $version, $name, $args ) = @_;
-
+    my ( $self, $name, $args ) = @_;
     croak "You must provide an API method" if not $name;
+
+    my $version = $self->_version_from_name($name);
     $args ||= {};
     my $req = $self->_build_api_method_request( 'POST', $version, $name, '', $args );
     $self->_mech->request($req);
@@ -113,7 +114,7 @@ respectively.
 sub balances {
     my ($self, $currency) = @_;
 
-    my $result = $self->call_auth(0, 'info');
+    my $result = $self->call_auth('info');
     return ( $result->{Wallets}{BTC}, $result->{Wallets}{$currency} );
 }
 
@@ -148,7 +149,7 @@ sub clearing_rate {
     # make sure we traverse offers in the right order
     my @offers =
         sort { $a->[0] <=> $b->[0] }
-        @{ $self->call(0, 'getDepth')->{$side} };
+        @{ $self->call('getDepth')->{$side} };
     @offers = reverse @offers if $side eq 'bids';
 
     # how much will we pay to purchase the desired quantity of BTC?
@@ -180,7 +181,7 @@ last 24 hours.
 
 sub market_price {
     my ($self) = @_;
-    my $trades    = $self->call(0, 'getTrades');
+    my $trades    = $self->call('getTrades');
     my $threshold = time - 86400;           # last 24 hours
 
     my $trade_count      = 0;
@@ -285,6 +286,14 @@ sub _sign {
     my ( $self, $message ) = @_;
     my $secret = decode_base64( $self->_secret );
     return encode_base64( hmac_sha512( $message, $secret ) );
+}
+
+# Returns the version of the api from the method name
+sub _version_from_name {
+  my ( $self, $name ) = @_;
+  $name =~ /^BTC[A-Z]{3}\/(money|stream|security)/ and return 2;
+  $name =~ /^(BTC[A-Z]{3}|generic)\/(\w*)/ and return 1;
+  return 0;
 }
 
 =head1 AUTHOR

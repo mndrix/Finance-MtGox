@@ -22,13 +22,13 @@ my $mtgox = Finance::MtGox->new({
 ok( $mtgox, 'Finance::MtGox object created' );
 
 # unauthenticated API calls
-my $ticker = $mtgox->call(2, 'BTCUSD/money/ticker');
+my $ticker = $mtgox->call('BTCUSD/money/ticker');
 is( ref $ticker, 'HASH', 'BTCUSD/ticker response is a hashref');
 is( $ticker->{result}, 'success', 'no BTCUSD/ticker errors' );
 is( $ticker->{data}{vol}{currency}, 'BTC', 'BTCUSD/ticker response');
 
 # authenticated API calls
-my $info = $mtgox->call_auth(2, "BTC$currency/money/info");
+my $info = $mtgox->call_auth("BTC$currency/money/info");
 is( ref $info, 'HASH', 'generic/info response is a hashref');
 is( $info->{result}, 'success', 'no generic/info errors' );
 cmp_ok( $info->{data}{Wallets}{BTC}{Balance}{value}, '>=', 0, 'info has some BTC funds' );

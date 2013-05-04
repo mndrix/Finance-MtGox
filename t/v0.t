@@ -22,14 +22,14 @@ my $mtgox = Finance::MtGox->new({
 ok( $mtgox, 'Finance::MtGox object created' );
 
 # unauthenticated API calls
-my $depth = $mtgox->call(0, 'getDepth');
+my $depth = $mtgox->call('getDepth');
 is( ref $depth, 'HASH', 'getDepth response is a hashref');
 is( $depth->{error}, undef, 'no getDepth errors' );
 cmp_ok( scalar @{ $depth->{asks} }, '>', 0, 'MtGox has some ask orders' );
 cmp_ok( scalar @{ $depth->{bids} }, '>', 0, 'MtGox has some bid orders' );
 
 # authenticated API calls
-my $info = $mtgox->call_auth(0, 'info');
+my $info = $mtgox->call_auth('info');
 is( ref $info, 'HASH', 'info response is a hashref');
 is( $info->{error}, undef, 'no info errors' );
 cmp_ok( $info->{Wallets}{BTC}, '>=', 0, 'info has some BTC funds' );
