@@ -107,12 +107,13 @@ sub call_auth {
 =head2 balances
 
 Returns a list with current BTC and C<$currency> account balances,
-respectively.
+respectively. If C<$currency> is not specified it defaults to USD.
 
 =cut
 
 sub balances {
     my ($self, $currency) = @_;
+    $currency ||= 'USD';
 
     my $result = $self->call_auth('info');
     return ( $result->{Wallets}{BTC}, $result->{Wallets}{$currency} );
