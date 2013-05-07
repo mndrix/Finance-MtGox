@@ -16,11 +16,11 @@ Finance::MtGox - trade Bitcoin with the MtGox API
 
 =head1 VERSION
 
-Version 0.04
+Version 0.50
 
 =cut
 
-our $VERSION = '0.04';
+our $VERSION = '0.50';
 
 
 =head1 SYNOPSIS
