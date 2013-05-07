@@ -27,16 +27,15 @@ our $VERSION = '0.04';
 
   use Finance::MtGox;
   my $mtgox = Finance::MtGox->new({
-    user     => 'username',
-    password => 'secret',
+    key     => 'api key',
+    secret  => 'api secret'
   });
-  # 'key' and 'secret' authentication works too
 
   # unauthenticated API calls
   my $depth = $mtgox->call('getDepth');
 
   # authenticated API calls
-  my $funds = $mtgox->call_auth('getFunds');
+  my $funds = $mtgox->call_auth('generic/info');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
@@ -48,32 +47,23 @@ our $VERSION = '0.04';
 =head2 new
 
 Create a new C<Finance::MtGox> object with your MtGox credentials provided
-in the C<user> and C<password> arguments.
-
-You can also provide credentials with C<key> and C<secret> arguments.  This
-allows access to MtGox's newer API which has more methods.
+in the C<key> and C<secret> arguments.
 
 =cut
 
 sub new {
     my ( $class, $args ) = @_;
 
-    if ( $args->{user} && $args->{password} ) {
-        # acceptable authentication for the legacy API
-    }
-    elsif ( $args->{key} && $args->{secret} ) {
-        # acceptable authentication for v0 API
-    }
-    else {
-        croak "You must provide either 'user' and 'password' or 'key' and 'secret' credentials";
-    }
+    $args->{key} && $args->{secret}
+      or croak "You must provide 'key' and 'secret' credentials.";
 
     $args->{json} = JSON::Any->new;
     $args->{mech} = WWW::Mechanize->new(stack_depth => 0);
+
     return bless $args, $class;
 }
 
-=head2 call($name)
+=head2 call( $name )
 
 Run the API call named C<$name>.  Returns a Perl data structure
 representing the JSON returned from MtGox.
@@ -83,7 +73,12 @@ representing the JSON returned from MtGox.
 sub call {
     my ( $self, $name ) = @_;
     croak "You must provide an API method" if not $name;
-    my $req = $self->_build_api_method_request( 'GET', $name, 'data' );
+
+    my $version = $self->_version_from_name($name);
+    my $req = $self->_build_api_method_request( 'GET',
+                                                $version,
+                                                $name,
+                                                $version == 0  ? 'data': '' );
     $self->_mech->request($req);
     return $self->_decode;
 }
@@ -98,11 +93,11 @@ from MtGox
 
 sub call_auth {
     my ( $self, $name, $args ) = @_;
-    croak "You must provide an API name" if not $name;
+    croak "You must provide an API method" if not $name;
+
+    my $version = $self->_version_from_name($name);
     $args ||= {};
-    $args->{name} = $self->_username;
-    $args->{pass} = $self->_password;
-    my $req = $self->_build_api_method_request( 'POST', $name, '', $args );
+    my $req = $self->_build_api_method_request( 'POST', $version, $name, '', $args );
     $self->_mech->request($req);
     return $self->_decode;
 }
@@ -111,15 +106,17 @@ sub call_auth {
 
 =head2 balances
 
-Returns a list with current BTC and USD account balances,
-respectively.
+Returns a list with current BTC and C<$currency> account balances,
+respectively. If C<$currency> is not specified it defaults to USD.
 
 =cut
 
 sub balances {
-    my ($self) = @_;
-    my $result = $self->call_auth('getFunds');
-    return ( $result->{btcs}, $result->{usds} );
+    my ($self, $currency) = @_;
+    $currency ||= 'USD';
+
+    my $result = $self->call_auth('info');
+    return ( $result->{Wallets}{BTC}, $result->{Wallets}{$currency} );
 }
 
 =head2 clearing_rate( $side, $amount, $currency )
@@ -203,21 +200,6 @@ sub market_price {
     return $trade_volume_usd / $trade_volume_btc;
 }
 
-=head2 version
-
-Returns a string indicating which version of the MtGox API is being used.
-One of 'legacy' or 'v0' (depending on which authentication was provided to
-L</new>).
-
-=cut
-
-sub version {
-    my ($self) = @_;
-    return 'legacy' if $self->_username && $self->_password;
-    return 'v0'     if $self->_key && $self->_secret;
-    die "Can't find a MtGox API version supporting these credentials";
-}
-
 ### Private methods below here
 
 sub _decode {
@@ -235,16 +217,6 @@ sub _mech {
     return $self->{mech};
 }
 
-sub _username {
-    my ($self) = @_;
-    return $self->{user};
-}
-
-sub _password {
-    my ($self) = @_;
-    return $self->{password};
-}
-
 sub _key {
     my ($self) = @_;
     return $self->{key};
@@ -257,32 +229,33 @@ sub _secret {
 
 # build a URI object for the endpoint of an API call
 sub _build_api_method_uri {
-    my ( $self, $name, $prefix ) = @_;
-    my $version = $self->version eq 'legacy' ? 'code'
-                : $self->version eq 'v0'     ? 'api/0'
-                : die "Unknown version"
-                ;
+    my ( $self, $version, $name, $prefix ) = @_;
+    my $version_url_token = "api/" . $version;
+
     $prefix = $prefix ? "$prefix/" : '';
-    return URI->new("https://mtgox.com/$version/$prefix$name.php");
+    return URI->new($version == 0 ?
+                    "https://mtgox.com/$version_url_token/$prefix$name.php"
+                    : "https://data.mtgox.com/$version_url_token/$prefix$name");
 }
 
 # builds an HTTP::Request object for making an API call
 sub _build_api_method_request {
-    my ( $self, $method, $name, $prefix, $params ) = @_;
+    my ( $self, $method, $version, $name, $prefix, $params ) = @_;
     $method = uc $method;
     $params ||= {};
 
     # prepare for authentication
-    if ( $method eq 'POST' && $self->version ne 'legacy' ) {
+    if ( $method eq 'POST') {
         $params->{nonce} = $self->_generate_nonce;
     }
 
-    my $uri = $self->_build_api_method_uri( $name, $prefix );
-    if ( $method eq 'GET' ) {
+    my $uri = $self->_build_api_method_uri( $version, $name, $prefix );
+    if ( $method eq 'GET') {
         # since March 19, 2013 no-auth requests need this hostname
         $uri->scheme('http');
         $uri->host('data.mtgox.com');
     }
+
     my $req = HTTP::Request->new( $method, $uri );
     if ( keys %$params ) {
         $uri->query_form($params);
@@ -290,16 +263,15 @@ sub _build_api_method_request {
 
             # move params to the request body
             my $query = $uri->query;
+            my $message = $version == 2 ? "$name\0$query" : $query;
             $req->header( 'Content-Type' => 'application/x-www-form-urlencoded' );
             $req->content($query);
             $uri->query(undef);
 
             # include a signature
-            if ( $self->version ne 'legacy' ) {
-                $req->header( 'Rest-Key', $self->_key );
-                $req->header( 'Rest-Sign', $self->_sign($query) );
-            }
-        }
+            $req->header( 'Rest-Key', $self->_key );
+            $req->header( 'Rest-Sign', $self->_sign($message) );
+          }
     }
     return $req;
 }
@@ -315,6 +287,14 @@ sub _sign {
     my ( $self, $message ) = @_;
     my $secret = decode_base64( $self->_secret );
     return encode_base64( hmac_sha512( $message, $secret ) );
+}
+
+# Returns the version of the api from the method name
+sub _version_from_name {
+  my ( $self, $name ) = @_;
+  $name =~ /^BTC[A-Z]{3}\/(money|stream|security)/ and return 2;
+  $name =~ /^(BTC[A-Z]{3}|generic)\/(\w*)/ and return 1;
+  return 0;
 }
 
 =head1 AUTHOR
