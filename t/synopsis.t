@@ -4,9 +4,11 @@ use warnings;
 use Finance::MtGox;
 use Test::More;
 
-my $username = '';
-my $password = '';
-if ( $username && $password ) {
+my $key    = $ENV{MTGOX_KEY};
+my $secret = $ENV{MTGOX_SECRET};
+my $currency = $ENV{MTGOX_CURRENCY};
+
+if ( $key && $secret ) {
     plan tests => 13;
 }
 else {
@@ -14,8 +16,8 @@ else {
 }
 
 my $mtgox = Finance::MtGox->new({
-    user     => $username,
-    password => $password,
+    key    => $key,
+    secret => $secret,
 });
 ok( $mtgox, 'Finance::MtGox object created' );
 
@@ -27,11 +29,11 @@ cmp_ok( scalar @{ $depth->{asks} }, '>', 0, 'MtGox has some ask orders' );
 cmp_ok( scalar @{ $depth->{bids} }, '>', 0, 'MtGox has some bid orders' );
 
 # authenticated API calls
-my $funds = $mtgox->call_auth('getFunds');
-is( ref $funds, 'HASH', 'getFunds response is a hashref');
-is( $funds->{error}, undef, 'no getFunds errors' );
-cmp_ok( $funds->{usds}, '>', 0, 'getFunds has some USD funds' );
-cmp_ok( $funds->{btcs}, '>', 0, 'getFunds has some BTC funds' );
+my $info = $mtgox->call_auth('generic/info');
+is( ref $info, 'HASH', 'generic/info response is a hashref');
+is( $info->{result}, 'success', 'no generic/info errors' );
+cmp_ok( $info->{return}{Wallets}{BTC}{Balance}{value}, '>=', 0, 'info has some BTC funds' );
+cmp_ok( $info->{return}{Wallets}{$currency}{Balance}{value}, '>=', 0, "info has some $currency funds" );
 
 # convenience methods built on the core API
 my ( $btcs, $usds ) = $mtgox->balances;

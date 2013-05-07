@@ -35,7 +35,7 @@ our $VERSION = '0.04';
   my $depth = $mtgox->call('getDepth');
 
   # authenticated API calls
-  my $funds = $mtgox->call_auth('info');
+  my $funds = $mtgox->call_auth('generic/info');
 
   # convenience methods built on the core API
   my ( $btcs, $usds ) = $mtgox->balances;
